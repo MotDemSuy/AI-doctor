@@ -1,5 +1,6 @@
 from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
+import time
 
 class Agent:
     def __init__(self, medical_report=None, role=None, extra_info=None):
@@ -8,79 +9,219 @@ class Agent:
         self.extra_info = extra_info
         # Initialize the prompt based on role and other info
         self.prompt_template = self.create_prompt_template()
-        # Initialize the model
-        self.model = ChatOpenAI(temperature=0, model="gpt-5")
+        
+        # Breakdown: Meditron-7b was echoing prompts. 
+        # Switching everything to llama3 for consistent instruction following.
+        selected_model = "llama3:8b"
+            
+        # Initialize the model - Local Ollama
+        self.model = ChatOllama(model=selected_model, temperature=0)
 
     def create_prompt_template(self):
-        if self.role == "MultidisciplinaryTeam":
-            templates = f"""
-                Act like a multidisciplinary team of healthcare professionals.
-                You will receive a medical report of a patient visited by a Cardiologist, Psychologist, and Pulmonologist.
-                Task: Review the patient's medical report from the Cardiologist, Psychologist, and Pulmonologist, analyze them and come up with a list of 3 possible health issues of the patient.
-                Just return a list of bullet points of 3 possible health issues of the patient and for each issue provide the reason.
-                
-                Cardiologist Report: {self.extra_info.get('cardiologist_report', '')}
-                Psychologist Report: {self.extra_info.get('psychologist_report', '')}
-                Pulmonologist Report: {self.extra_info.get('pulmonologist_report', '')}
+        if self.role == "Generalist":
+            # Bác sĩ Đa khoa - Triage Agent
+            template = """
+            Bạn là một Bác sĩ Đa khoa giàu kinh nghiệm làm việc tại phòng khám sàng lọc.
+            Nhiệm vụ: Phân tích triệu chứng của bệnh nhân và CHỈ ĐỊNH các chuyên khoa phù hợp nhất để khám chuyên sâu.
+            
+            Danh sách các chuyên khoa hiện có:
+            - Emergency (Hồi sức cấp cứu - Cho các ca nguy kịch, ngất, khó thở cấp, tai nạn...)
+            - Cardiologist (Tim mạch - Đau ngực, huyết áp, nhịp tim...)
+            - Pulmonologist (Hô hấp - Ho, khó thở, phổi...)
+            - Gastroenterologist (Tiêu hóa - Đau bụng, dạ dày, gan mật...)
+            - Neurologist (Thần kinh - Đau đầu, chóng mặt, tê bì, đột quỵ...)
+            - Endocrinologist (Nội tiết - Tiểu đường, tuyến giáp...)
+            - Surgeon (Ngoại khoa - Chấn thương, khối u cần mổ, ngoại tổng quát...)
+            - OBGYN (Sản Phụ khoa - Phụ nữ mang thai, bệnh phụ khoa...)
+            - Pediatrician (Nhi khoa - Trẻ em dưới 16 tuổi)
+            - ENT (Tai Mũi Họng)
+            - Dermatologist (Da liễu - Bệnh ngoài da)
+            - Ophthalmologist (Mắt)
+            - Dentist (Răng Hàm Mặt)
+            - Psychiatrist (Tâm lý - Căng thẳng, trầm cảm, lo âu...)
+
+            Báo cáo của bệnh nhân: {medical_report}
+
+            Yêu cầu trả về:
+            Chỉ trả về một danh sách các tên chuyên khoa bằng tiếng Anh (để code xử lý) nằm trong danh sách trên, ngăn cách bởi dấu phẩy.
+            Ví dụ: Cardiologist, Emergency
+            Không giải thích gì thêm.
+            """
+        elif self.role == "MultidisciplinaryTeam":
+            # Hội đồng chẩn đoán
+            template = f"""
+            Bạn là Hội đồng Chẩn đoán Y khoa đa chuyên khoa (Medical Board).
+            Nhiệm vụ: Tổng hợp các báo cáo từ các bác sĩ chuyên khoa và đưa ra Chẩn đoán cuối cùng xác đáng nhất.
+            
+            Các báo cáo từ chuyên khoa:
+            {self.extra_info.get('specialist_reports', '')}
+            
+            Hãy đưa ra kết luận theo định dạng sau (bằng Tiếng Việt):
+            # KẾT LUẬN HỘI ĐỒNG
+            1. **Chẩn đoán sơ bộ**: ...
+            2. **Phân tích tổng hợp**: (Tóm tắt các phát hiện chính từ các chuyên khoa)
+            3. **Đề xuất điều trị/Cận lâm sàng tiếp theo**: ...
+            4. **Lời khuyên cho bệnh nhân**: ...
+            """
+        elif self.role == "Consultant":
+            # Chuyên gia tư vấn (Chat mode)
+            consultant_type = self.extra_info.get('consultant_type', 'General')
+            diagnosis_context = self.extra_info.get('diagnosis_context', '')
+            chat_history = self.extra_info.get('chat_history', '')
+            
+            if consultant_type == "Nutritionist":
+                role_name = "Chuyên gia Dinh Dưỡng"
+                focus = "chế độ ăn uống, thực phẩm nên ăn/kiêng, thực đơn mẫu"
+            elif consultant_type == "LifestyleAdvisor":
+                role_name = "Chuyên gia Lối Sống"
+                focus = "chế độ tập luyện, giấc ngủ, kiểm soát căng thẳng, thói quen sinh hoạt"
+            else:
+                role_name = "Trợ lý Y tế"
+                focus = "thông tin y tế chung"
+
+            template = f"""
+            Bạn là {role_name} chuyên nghiệp, tận tâm.
+            
+            Thông tin bệnh nhân & Chẩn đoán từ bác sĩ:
+            {diagnosis_context}
+            
+            Lịch sử trò chuyện:
+            {chat_history}
+            
+            Người dùng hỏi: {{medical_report}} (Ở đây là câu hỏi mới nhất của người dùng)
+            
+            Nhiệm vụ: Trả lời câu hỏi của người dùng, tập trung sâu vào {focus} để hỗ trợ quá trình điều trị.
+            Lời khuyên phải cụ thể, thiết thực và dựa trên chẩn đoán y khoa đã có.
+            Giọng văn: Thân thiện, khích lệ, chuyên nghiệp.
+            """
+        elif self.role == "BMIAdvisor":
+            # Chuyên gia phân tích BMI & Cân nặng
+            template = """
+            Bạn là một Chuyên gia Dinh dưỡng và Thể hình (Certified Personal Trainer & Nutritionist).
+            Nhiệm vụ: Phân tích chỉ số cơ thể và đưa ra lời khuyên tăng/giảm cân cụ thể.
+            
+            Thông tin bệnh nhân:
+            {medical_report}
+            
+            Hãy trả lời ngắn gọn, súc tích bằng Tiếng Việt:
+            1. **Đánh giá tình trạng**: (Gầy/Bình thường/Thừa cân/Béo phì? Mức độ nào?).
+            2. **Mục tiêu**: Cần tăng/giảm bao nhiêu kg để về mức Chuẩn (BMI 18.5 - 24.9)?
+            3. **Lời khuyên Dinh dưỡng**: (Nên ăn gì, kiêng gì? Ví dụ thực phẩm).
+            4. **Lời khuyên Vận động**: (Bài tập phù hợp? Cường độ?).
+            
+            Giọng văn: Thân thiện, khích lệ.
             """
         else:
-            templates = {
-                "Cardiologist": """
-                    Act like a cardiologist. You will receive a medical report of a patient.
-                    Task: Review the patient's cardiac workup, including ECG, blood tests, Holter monitor results, and echocardiogram.
-                    Focus: Determine if there are any subtle signs of cardiac issues that could explain the patient’s symptoms. Rule out any underlying heart conditions, such as arrhythmias or structural abnormalities, that might be missed on routine testing.
-                    Recommendation: Provide guidance on any further cardiac testing or monitoring needed to ensure there are no hidden heart-related concerns. Suggest potential management strategies if a cardiac issue is identified.
-                    Please only return the possible causes of the patient's symptoms and the recommended next steps.
-                    Medical Report: {medical_report}
-                """,
-                "Psychologist": """
-                    Act like a psychologist. You will receive a patient's report.
-                    Task: Review the patient's report and provide a psychological assessment.
-                    Focus: Identify any potential mental health issues, such as anxiety, depression, or trauma, that may be affecting the patient's well-being.
-                    Recommendation: Offer guidance on how to address these mental health concerns, including therapy, counseling, or other interventions.
-                    Please only return the possible mental health issues and the recommended next steps.
-                    Patient's Report: {medical_report}
-                """,
-                "Pulmonologist": """
-                    Act like a pulmonologist. You will receive a patient's report.
-                    Task: Review the patient's report and provide a pulmonary assessment.
-                    Focus: Identify any potential respiratory issues, such as asthma, COPD, or lung infections, that may be affecting the patient's breathing.
-                    Recommendation: Offer guidance on how to address these respiratory concerns, including pulmonary function tests, imaging studies, or other interventions.
-                    Please only return the possible respiratory issues and the recommended next steps.
-                    Patient's Report: {medical_report}
-                """
+            # Các bác sĩ chuyên khoa
+            # ... (Existing code) ...
+            vn_role_map = {
+                "Emergency": "Bác sĩ Hồi sức Cấp cứu",
+                "Cardiologist": "Bác sĩ Tim mạch",
+                "Pulmonologist": "Bác sĩ Hô hấp",
+                "Gastroenterologist": "Bác sĩ Tiêu hóa - Gan mật",
+                "Neurologist": "Bác sĩ Thần kinh",
+                "Endocrinologist": "Bác sĩ Nội tiết",
+                "Surgeon": "Bác sĩ Ngoại khoa",
+                "OBGYN": "Bác sĩ Sản Phụ khoa",
+                "Pediatrician": "Bác sĩ Nhi khoa",
+                "ENT": "Bác sĩ Tai Mũi Họng",
+                "Dermatologist": "Bác sĩ Da liễu",
+                "Ophthalmologist": "Bác sĩ Mắt",
+                "Dentist": "Bác sĩ Răng Hàm Mặt",
+                "Psychiatrist": "Bác sĩ Tâm lý"
             }
-            templates = templates[self.role]
-        return PromptTemplate.from_template(templates)
+            vn_role = vn_role_map.get(self.role, self.role)
+            
+            template = f"""
+            Đóng vai: {vn_role}.
+            Nhiệm vụ: Phân tích báo cáo y tế của bệnh nhân dưới góc độ chuyên môn của bạn.
+            
+            Báo cáo của bệnh nhân: {{medical_report}}
+            
+            Hãy trả lời bằng Tiếng Việt theo cấu trúc:
+            **1. Đánh giá chuyên khoa**: (Nhận định các triệu chứng liên quan đến chuyên khoa của bạn. Nếu không có gì bất thường thuộc chuyên khoa, hãy nói rõ).
+            **2. Chẩn đoán phân biệt**: (Các bệnh lý có thể xảy ra).
+            **3. Đề xuất**: (Các xét nghiệm cận lâm sàng cần làm thêm hoặc hướng điều trị).
+            
+            Lưu ý: Chỉ tập trung vào chuyên môn của {vn_role}.
+            """
+        
+        return PromptTemplate.from_template(template)
     
     def run(self):
-        print(f"{self.role} is running...")
+        # print(f"{self.role} is running...")
         prompt = self.prompt_template.format(medical_report=self.medical_report)
+        
+        # Local Ollama - No Rate Limits needed!
         try:
+            print(f"   [{self.role}] Processing with Ollama ({self.model.model})...")
             response = self.model.invoke(prompt)
             return response.content
         except Exception as e:
-            print("Error occurred:", e)
-            return None
+            print(f"Error in {self.role}: {e}")
+            raise e
 
-# Define specialized agent classes
+# Wrapper classes for easy instantiation
+class BMIAdvisor(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "BMIAdvisor")
+
+class Generalist(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "Generalist")
+
+class Emergency(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "Emergency")
+
 class Cardiologist(Agent):
-    def __init__(self, medical_report):
-        super().__init__(medical_report, "Cardiologist")
-
-class Psychologist(Agent):
-    def __init__(self, medical_report):
-        super().__init__(medical_report, "Psychologist")
+    def __init__(self, medical_report): super().__init__(medical_report, "Cardiologist")
 
 class Pulmonologist(Agent):
-    def __init__(self, medical_report):
-        super().__init__(medical_report, "Pulmonologist")
+    def __init__(self, medical_report): super().__init__(medical_report, "Pulmonologist")
+
+class Gastroenterologist(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "Gastroenterologist")
+
+class Neurologist(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "Neurologist")
+
+class Endocrinologist(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "Endocrinologist")
+
+class Surgeon(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "Surgeon")
+
+class OBGYN(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "OBGYN")
+
+class Pediatrician(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "Pediatrician")
+
+class ENT(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "ENT")
+
+class Dermatologist(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "Dermatologist")
+
+class Ophthalmologist(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "Ophthalmologist")
+
+class Dentist(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "Dentist")
+
+class Psychiatrist(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "Psychiatrist")
 
 class MultidisciplinaryTeam(Agent):
-    def __init__(self, cardiologist_report, psychologist_report, pulmonologist_report):
-        extra_info = {
-            "cardiologist_report": cardiologist_report,
-            "psychologist_report": psychologist_report,
-            "pulmonologist_report": pulmonologist_report
-        }
-        super().__init__(role="MultidisciplinaryTeam", extra_info=extra_info)
+    def __init__(self, specialist_reports):
+        super().__init__(role="MultidisciplinaryTeam", extra_info={"specialist_reports": specialist_reports})
+
+class Consultant(Agent):
+    def __init__(self, diagnosis_context, consultant_type, chat_history, user_question):
+        super().__init__(
+            medical_report=user_question, 
+            role="Consultant", 
+            extra_info={
+                "diagnosis_context": diagnosis_context,
+                "consultant_type": consultant_type,
+                "chat_history": chat_history
+            }
+        )
