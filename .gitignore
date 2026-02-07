@@ -115,3 +115,7 @@ datasets/
 results/
 outputs/
 logs/
+
+Data/Datasets/
+Data/PatientImages/
+runs/

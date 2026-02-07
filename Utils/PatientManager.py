@@ -19,7 +19,7 @@ class PatientManager:
                 return json.load(f)
         return None
 
-    def save_patient(self, cccd, info):
+    def save_patient(self, cccd, info, genetic_data="", lifestyle="", habits="", medical_history=""):
         """Creates or updates patient profile info."""
         file_path = self._get_file_path(cccd)
         
@@ -28,10 +28,28 @@ class PatientManager:
         if existing_data:
             data = existing_data
             data['info'] = info # Update info
+            # Update specific fields if they are provided (not empty strings), otherwise keep existing
+            # If they are not in existing data, default to empty string
+            if genetic_data: data['genetic_data'] = genetic_data
+            elif 'genetic_data' not in data: data['genetic_data'] = ""
+            
+            if lifestyle: data['lifestyle'] = lifestyle
+            elif 'lifestyle' not in data: data['lifestyle'] = ""
+            
+            if habits: data['habits'] = habits
+            elif 'habits' not in data: data['habits'] = ""
+            
+            if medical_history: data['medical_history'] = medical_history
+            elif 'medical_history' not in data: data['medical_history'] = ""
+            
         else:
             data = {
                 "cccd": cccd,
                 "info": info,
+                "genetic_data": genetic_data,
+                "lifestyle": lifestyle,
+                "habits": habits,
+                "medical_history": medical_history,
                 "history": []
             }
 
@@ -40,7 +58,7 @@ class PatientManager:
         
         return data
 
-    def add_history(self, cccd, diagnosis_content, treatment_suggestion=""):
+    def add_history(self, cccd, diagnosis_content, treatment_suggestion="", image_path=None):
         """Adds a medical record to the patient's history."""
         data = self.load_patient(cccd)
         if not data:
@@ -50,7 +68,8 @@ class PatientManager:
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "location": "Thành phố Đà Nẵng, Việt Nam",
             "diagnosis": diagnosis_content,
-            "treatment_notes": treatment_suggestion
+            "treatment_notes": treatment_suggestion,
+            "image_path": image_path
         }
 
         data['history'].append(record)

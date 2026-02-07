@@ -60,8 +60,28 @@ class Agent:
             # KẾT LUẬN HỘI ĐỒNG
             1. **Chẩn đoán sơ bộ**: ...
             2. **Phân tích tổng hợp**: (Tóm tắt các phát hiện chính từ các chuyên khoa)
-            3. **Đề xuất điều trị/Cận lâm sàng tiếp theo**: ...
-            4. **Lời khuyên cho bệnh nhân**: ...
+            3. **Cơ sở lập luận (Explainable AI)**: 
+               - **Tại sao chọn chẩn đoán này?**: (Liệt kê các triệu chứng chính và kết quả cận lâm sàng ủng hộ).
+               - **Tại sao loại trừ?**: (Lý do loại trừ các khả năng khác).
+            4. **Đề xuất điều trị/Cận lâm sàng tiếp theo**: ...
+            5. **Lời khuyên cho bệnh nhân**: ...
+            """
+        elif self.role == "DiagnosticExplainer":
+            # Chuyên gia Giải thích Chẩn đoán (XAI)
+            template = """
+            Bạn là một Chuyên gia Giải thích Y khoa (Medical Explainability Expert).
+            Nhiệm vụ: Giải thích chi tiết logic đằng sau chẩn đoán cho bác sĩ và bệnh nhân, đảm bảo tính minh bạch (Transparency).
+            
+            Dữ liệu đầu vào:
+            {medical_report}
+            
+            Hãy trả lời bằng Tiếng Việt, tập trung vào tư duy phản biện:
+            1. **Bản đồ Tư duy Chẩn đoán**: (Vẽ ra logic: Triệu chứng A + Yếu tố nguy cơ B => Khả năng cao là bệnh X).
+            2. **Phân tích Pros/Cons**: 
+               - **Yếu tố Ủng hộ chẩn đoán (Pros)**: ...
+               - **Yếu tố Mâu thuẫn/Chưa rõ (Cons)**: ...
+            3. **Độ tin cậy của chẩn đoán**: (Đánh giá mức độ chắc chắn: Cao/Trung bình/Thấp và lý do).
+            4. **Các Giả thuyết Thay thế**: (Nếu không phải bệnh X, thì khả năng tiếp theo là gì?).
             """
         elif self.role == "Consultant":
             # Chuyên gia tư vấn (Chat mode)
@@ -110,6 +130,36 @@ class Agent:
             4. **Lời khuyên Vận động**: (Bài tập phù hợp? Cường độ?).
             
             Giọng văn: Thân thiện, khích lệ.
+            """
+        elif self.role == "TreatmentPlanner":
+            # Chuyên gia Lập Kế Hoạch Điều Trị Cá Nhân Hóa
+            template = """
+            Bạn là một Chuyên gia Lập Kế Hoạch Điều Trị Cá Nhân Hóa (Personalized Treatment Planner) hàng đầu.
+            Nhiệm vụ: Xây dựng một phác đồ điều trị chi tiết, riêng biệt cho bệnh nhân dựa trên dữ liệu tổng hợp (Gen, Lối sống, Tiền sử...).
+            
+            Dữ liệu bệnh nhân và Chẩn đoán hiện tại:
+            {medical_report}
+            
+            Hãy trả lời bằng Tiếng Việt một cách chuyên nghiệp và chi tiết:
+            1. **Phân tích Yếu tố Cá nhân**: (Phân tích sâu xem Gen, Lối sống, và Thói quen cụ thể của bệnh nhân ảnh hưởng thế nào đến bệnh lý và quá trình điều trị).
+            2. **Phác đồ Điều trị Cá nhân hóa Tối ưu**: (Đề xuất phương án điều trị cụ thể, bao gồm thuốc men và can thiệp y tế, được điều chỉnh riêng cho cơ địa này).
+            3. **Kế hoạch Điều chỉnh Lối sống & Dinh dưỡng**: (Các thay đổi cụ thể về sinh hoạt cần thiết để hỗ trợ điều trị).
+            4. **Lưu ý & Tiên lượng**: (Cảnh báo các rủi ro tiềm ẩn dựa trên gene/tiền sử và dự đoán kết quả điều trị).
+            """
+        elif self.role == "PharmacogenomicsAdvisor":
+            # Chuyên gia Dược lý Di truyền & An toàn thuốc
+            template = """
+            Bạn là một Chuyên gia Dược lý Di truyền (Pharmacogenomics Specialist) và Dược lâm sàng.
+            Nhiệm vụ: Phân tích dữ liệu gen, CƠ ĐỊA, DỊ ỨNG và đặc điểm sinh học để dự đoán phản ứng thuốc, tối ưu hóa việc dùng thuốc.
+            
+            Dữ liệu bệnh nhân:
+            {medical_report}
+            
+            Hãy trả lời bằng Tiếng Việt:
+            1. **Dự đoán Phản ứng Thuốc**: (Phân tích khả năng chuyển hóa thuốc dựa trên cơ địa/gen/lối sống. Nhóm thuốc nào hiệu quả cao? Nhóm nào cần thận trọng?).
+            2. **Cảnh báo Tác dụng phụ & Dị ứng**: (Lưu ý đặc biệt về tiền sử dị ứng đã khai báo và các rủi ro tiềm ẩn).
+            3. **Khuyến nghị Liều lượng & Cách dùng**: (Cần điều chỉnh liều lượng thế nào so với tiêu chuẩn? Cần theo dõi chỉ số gì?).
+            4. **Đề xuất Thay thế (Nếu cần)**: (Gợi ý các loại thuốc hoặc phương pháp thay thế an toàn hơn nếu có nguy cơ cao).
             """
         else:
             # Các bác sĩ chuyên khoa
@@ -225,3 +275,12 @@ class Consultant(Agent):
                 "chat_history": chat_history
             }
         )
+
+class TreatmentPlanner(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "TreatmentPlanner")
+
+class PharmacogenomicsAdvisor(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "PharmacogenomicsAdvisor")
+
+class DiagnosticExplainer(Agent):
+    def __init__(self, medical_report): super().__init__(medical_report, "DiagnosticExplainer")

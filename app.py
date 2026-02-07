@@ -3,7 +3,10 @@ import os, time
 from datetime import datetime
 from dotenv import load_dotenv
 from Utils.Agents import *
+from Utils.Agents import *
 from Utils.PatientManager import PatientManager
+from Utils.MedicalImaging import MedicalImageAnalyzer
+from PIL import Image
 
 # Page Config
 st.set_page_config(page_title="Hệ Thống Chẩn Đoán Y Khoa AI", page_icon="🏥", layout="wide")
@@ -41,6 +44,8 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "found_patient_info" not in st.session_state:
     st.session_state.found_patient_info = None
+if "found_patient_full" not in st.session_state:
+    st.session_state.found_patient_full = {}
 if "search_cccd" not in st.session_state:
     st.session_state.search_cccd = ""
 
@@ -61,9 +66,11 @@ if not st.session_state.current_patient:
                 
                 if patient_data:
                     st.session_state.found_patient_info = patient_data['info']
+                    st.session_state.found_patient_full = patient_data
                     st.success("✅ Đã tìm thấy hồ sơ! Vui lòng kiểm tra và cập nhật thông tin bên phải.")
                 else:
                     st.session_state.found_patient_info = {} # Empty dict signals New User
+                    st.session_state.found_patient_full = {}
                     st.info("ℹ️ Hồ sơ mới. Vui lòng nhập thông tin đăng ký bên phải.")
             else:
                 st.error("Vui lòng nhập số CCCD.")
@@ -107,6 +114,16 @@ if not st.session_state.current_patient:
                     f_height = st.number_input("Chiều cao (cm)", min_value=0, max_value=250, value=int(defaults.get('height', 170)))
                     f_weight = st.number_input("Cân nặng (kg)", min_value=0, max_value=200, value=int(defaults.get('weight', 65)))
                 
+                # Personalized Medicine Inputs
+                st.markdown("---")
+                with st.expander("📝 Thông tin Lối sống & Tiền sử (Tùy chọn)"):
+                    full_data = st.session_state.found_patient_full
+                    
+                    f_genetic = st.text_area("Dị ứng / Đặc điểm cơ địa", value=full_data.get('genetic_data', ''), placeholder="Ví dụ: Dị ứng Penicillin, cơ địa dễ tăng cân, máu khó đông...")
+                    f_lifestyle = st.text_area("Lối sống (Ăn uống, Vận động)", value=full_data.get('lifestyle', ''), placeholder="Ví dụ: Ăn chay, chạy bộ 3 lần/tuần, ngủ 6 tiếng/ngày...")
+                    f_habits = st.text_area("Thói quen (Hút thuốc, Rượu bia...)", value=full_data.get('habits', ''), placeholder="Ví dụ: Hút thuốc 1 gói/ngày, hay uống cà phê...")
+                    f_history = st.text_area("Tiền sử bệnh gia đình & bản thân", value=full_data.get('medical_history', ''), placeholder="Ví dụ: Bố bị tiểu đường, từng mổ ruột thừa năm 2015...")
+                
                 submit_label = "💾 Lưu & Đăng Nhập"
                 
                 if st.form_submit_button(submit_label, type="primary"):
@@ -124,7 +141,14 @@ if not st.session_state.current_patient:
                             "weight": f_weight
                         }
                         # Save (Update or Create)
-                        new_patient = patient_manager.save_patient(target_cccd, info)
+                        new_patient = patient_manager.save_patient(
+                            target_cccd, 
+                            info,
+                            genetic_data=f_genetic,
+                            lifestyle=f_lifestyle,
+                            habits=f_habits,
+                            medical_history=f_history
+                        )
                         st.session_state.current_patient = new_patient
                         st.success("Đã cập nhật thông tin!")
                         time.sleep(0.5)
@@ -193,7 +217,7 @@ else:
     st.title("🏥 Chẩn Đoán Y Khoa AI")
     
     # Tabs for Diagnosis vs History Details
-    tab1, tab2 = st.tabs(["🩺 Khám Bệnh Mới", "📂 Chi Tiết Lịch Sử"])
+    tab1, tab2, tab3 = st.tabs(["🩺 Khám Bệnh Mới", "📷 Chẩn Đoán Hình Ảnh", "📂 Chi Tiết Lịch Sử"])
     
     with tab1:
         st.markdown(f"### Xin chào, {info['name']}. Hôm nay bạn cảm thấy thế nào?")
@@ -254,7 +278,13 @@ else:
             Cân nặng: {info['weight']} kg
             BMI: {bmi:.1f}
             
-            Triệu chứng/Tiền sử:
+            Dữ liệu Cá nhân hóa:
+            - Tiền sử Y khoa: {patient.get('medical_history', 'Không có')}
+            - Dị ứng/Cơ địa: {patient.get('genetic_data', 'Chưa ghi nhận')}
+            - Lối sống: {patient.get('lifestyle', 'Chưa ghi nhận')}
+            - Thói quen: {patient.get('habits', 'Chưa ghi nhận')}
+
+            Triệu chứng hiện tại:
             {symptoms}
             """
             st.session_state.full_report_context = full_report
@@ -354,6 +384,54 @@ else:
                 mime="text/plain"
             )
 
+            # --- PERSONALIZED MEDICINE TOOLS ---
+            st.markdown("---")
+            st.subheader("🧬 Y Học Chính Xác & Phác Đồ Cá Nhân")
+            
+            p_col1, p_col2, p_col3 = st.columns(3)
+            
+            with p_col1:
+                if st.button("💊 Dự Báo Phản Ứng Thuốc"):
+                    with st.spinner("Đang phân tích dữ liệu gen và cơ địa..."):
+                        try:
+                            # Use full report which already contains personalized data and diagnosis context
+                            p_agent = PharmacogenomicsAdvisor(st.session_state.full_report_context)
+                            p_result = p_agent.run()
+                            st.success("Kết quả Phân tích Dược lý:")
+                            st.markdown(p_result)
+                        except Exception as e:
+                            st.error(f"Lỗi: {str(e)}")
+                            
+            with p_col2:
+                if st.button("📋 Xây Dựng Phác Đồ Điều Trị"):
+                    with st.spinner("Đang xây dựng kế hoạch điều trị chi tiết..."):
+                        try:
+                            planner = TreatmentPlanner(st.session_state.full_report_context)
+                            plan_result = planner.run()
+                            st.success("Phác đồ Điều trị Cá nhân hóa:")
+                            st.markdown(plan_result)
+                        except Exception as e:
+                            st.error(f"Lỗi: {str(e)}")
+
+            with p_col3:
+                if st.button("🔍 Giải Thích Logic (XAI)"):
+                    with st.spinner("Đang phân tích logic chẩn đoán..."):
+                        try:
+                            # Create context with diagnosis included
+                            explainer_context = f"""
+                            BÁO CÁO Y TẾ:
+                            {st.session_state.full_report_context}
+                            
+                            KẾT LUẬN CHẨN ĐOÁN CỦA HỆ THỐNG:
+                            {st.session_state.final_diagnosis}
+                            """
+                            explainer = DiagnosticExplainer(explainer_context)
+                            explanation = explainer.run()
+                            st.info("Báo Cáo Giải Trình Logic Chẩn Đoán:")
+                            st.markdown(explanation)
+                        except Exception as e:
+                            st.error(f"Lỗi: {str(e)}")
+
             # --- CHAT INTERFACE ---
             st.markdown("---")
             st.subheader("💬 Tư Vấn Chuyên Sâu Sau Chẩn Đoán")
@@ -418,19 +496,80 @@ else:
                             message_placeholder.error(f"Lỗi: {e}")
 
     with tab2:
+        st.subheader("📷 Phân Tích Hình Ảnh Y Tế (Beta)")
+        
+        uploaded_file = st.file_uploader("Tải lên ảnh X-quang, CT, MRI...", type=["jpg", "png", "jpeg"])
+        
+        if uploaded_file is not None:
+             # Layout
+            col_img1, col_img2 = st.columns(2)
+            
+            with col_img1:
+                st.image(uploaded_file, caption="Ảnh gốc", use_column_width=True)
+            
+            if st.button("🚀 Phân Tích Ngay"):
+                with st.spinner("AI đang quét hình ảnh..."):
+                    try:
+                        # Save temp file
+                        os.makedirs("Data/Temp", exist_ok=True)
+                        temp_path = os.path.join("Data/Temp", uploaded_file.name)
+                        with open(temp_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                            
+                        # Analyze
+                        analyzer = MedicalImageAnalyzer() # Default model
+                        result = analyzer.analyze(temp_path)
+                        
+                        with col_img2:
+                            if "error" in result:
+                                st.error(result['error'])
+                            else:
+                                st.success("Hoàn tất!")
+                                st.info(f"**Kết quả:** {result.get('summary', 'N/A')}")
+                                st.metric("Độ tin cậy", f"{result.get('confidence', 0):.1%}")
+
+                        # Save to history option
+                        if "error" not in result:
+                            if st.button("💾 Lưu Kết Quả Vào Hồ Sơ"):
+                                # Create permanent path
+                                os.makedirs("Data/PatientImages", exist_ok=True)
+                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                perm_name = f"{patient['cccd']}_{timestamp}_{uploaded_file.name}"
+                                perm_path = os.path.join("Data", "PatientImages", perm_name)
+                                
+                                # Copy/Move file
+                                import shutil
+                                shutil.copy(temp_path, perm_path)
+                                
+                                # Add to history
+                                display_text = f"[Chẩn Đoán Hình Ảnh] {result.get('summary', '')}"
+                                patient_manager.add_history(
+                                    cccd=patient['cccd'],
+                                    diagnosis_content=display_text,
+                                    treatment_suggestion="Kết quả hình ảnh cần được bác sĩ chuyên khoa xác nhận.",
+                                    image_path=perm_path
+                                )
+                                st.success("Đã lưu vào hồ sơ bệnh án!")
+                                st.rerun()
+
+                    except Exception as e:
+                        st.error(f"Lỗi xử lý: {e}")
+
+    with tab3:
         st.subheader(f"📂 Hồ Sơ Bệnh Án Của {info['name']}")
         if not patient['history']:
             st.info("Chưa có lịch sử khám bệnh.")
         else:
             for i, record in enumerate(reversed(patient['history'])):
-                st.markdown(f"""
-                <div class="history-card">
-                    <h4>📅 {record['timestamp']}</h4>
-                    <p><b>📍 Tại:</b> {record['location']}</p>
-                    <hr>
-                    <p><b>🩺 Chẩn đoán:</b></p>
-                    <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px;">
-                        {record['diagnosis']}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                with st.expander(f"📅 {record['timestamp']} - {record['diagnosis'][:50]}..."):
+                    st.write(f"**Nơi khám:** {record['location']}")
+                    st.write(f"**Chẩn đoán:** {record['diagnosis']}")
+                    st.write(f"**Ghi chú/Điều trị:** {record['treatment_notes']}")
+                    
+                    if record.get('image_path'):
+                        st.markdown("**Ảnh chụp chiếu:**")
+                        if os.path.exists(record['image_path']):
+                            st.image(record['image_path'], width=300)
+                        else:
+                            st.warning(f"Không tìm thấy file ảnh: {record['image_path']}")
+

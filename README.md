@@ -67,3 +67,25 @@
 - **Lỗi nhập ngày sinh đỏ lòm**:
   - Hãy nhập đúng định dạng **Ngày/Tháng/Năm** (Ví dụ: `20/05/1995`) rồi bấm **Enter**.
   - Hoặc bấm vào ô để chọn từ lịch.
+## 🧠 Training & Dữ Liệu Hình Ảnh (Nâng Cao)
+Để AI có thể chẩn đoán hình ảnh chính xác, bạn cần tự huấn luyện model với dữ liệu y tế thực tế.
+
+### 1. Tải Dữ Liệu (Dataset)
+Sử dụng script `download_data.py` để tải dataset mẫu từ Kaggle (ví dụ: Viêm phổi).
+
+**Yêu cầu:**
+- Tạo tài khoản [Kaggle](https://www.kaggle.com).
+- Vào **Account** > **Create New API Token** > Tải file `kaggle.json`.
+- Copy file `kaggle.json` vào thư mục mặc định: `C:\Users\YOUR_USER\.kaggle\`.
+
+**Chạy lệnh:**
+```bash
+python download_data.py
+```
+
+### 2. Huấn Luyện Model (Training)
+Sử dụng script `train_model.py` để bắt đầu dạy AI học từ dữ liệu bạn vừa tải.
+```bash
+python train_model.py
+```
+Sau khi train xong, bạn sẽ thu được file model `.pt` để sử dụng trong ứng dụng.
